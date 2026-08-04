@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A4 Maze Generator</title>
+<meta name="description" content="Generate a complex, printable A4 maze. Refresh for a new one, then print.">
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1d2026;
+    --line: #2e333c;
+    --text: #e7e9ee;
+    --muted: #9aa2b1;
+    --accent: #5b8cff;
+    --paper-w: 210mm;
+    --paper-h: 297mm;
+    --pad: 12mm;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.45 ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  /* ---------- Controls ---------- */
+  .controls {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    padding: 12px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .brand {
+    font-weight: 650;
+    letter-spacing: .2px;
+    margin-right: 6px;
+    white-space: nowrap;
+  }
+
+  .field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  select, input[type="text"] {
+    background: #12141a;
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 6px 8px;
+    font: inherit;
+    font-size: 14px;
+  }
+
+  input[type="text"] { width: 11ch; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+
+  button {
+    border: 1px solid var(--line);
+    background: #262b33;
+    color: var(--text);
+    border-radius: 7px;
+    padding: 7px 14px;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  button:hover { border-color: #4a515e; }
+  button:active { transform: translateY(1px); }
+
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #0b1020;
+  }
+
+  button.primary:hover { background: #7aa2ff; border-color: #7aa2ff; }
+
+  .spacer { flex: 1 1 auto; }
+
+  .hint {
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  kbd {
+    background: #12141a;
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 1px 5px;
+    font: inherit;
+    font-size: 12px;
+  }
+
+  /* ---------- Paper ---------- */
+  .stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    padding: 24px 12px 48px;
+  }
+
+  .sheet {
+    width: var(--paper-w);
+    height: var(--paper-h);
+    max-width: 100%;
+    padding: var(--pad);
+    background: #fff;
+    color: #000;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .45);
+  }
+
+  .sheet-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    border-bottom: 0.5pt solid #000;
+    padding-bottom: 2mm;
+    margin-bottom: 3mm;
+  }
+
+  .sheet-title {
+    font-size: 12pt;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+
+  .sheet-meta {
+    font-size: 7.5pt;
+    letter-spacing: .04em;
+    color: #444;
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+
+  .maze-area {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+  }
+
+  .maze-area svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  #solutionSheet[hidden] { display: none; }
+
+  /* ---------- Print ---------- */
+  @media print {
+    html, body { background: #fff; }
+    .controls, .stage > .hint { display: none !important; }
+    .stage { padding: 0; gap: 0; display: block; }
+    .sheet {
+      box-shadow: none;
+      width: var(--paper-w);
+      height: var(--paper-h);
+      break-inside: avoid;
+    }
+    .sheet + .sheet { break-before: page; }
+  }
+</style>
+</head>
+<body>
+
+<div class="controls">
+  <span class="brand">🌀 A4 Maze</span>
+
+  <label class="field">
+    Difficulty
+    <select id="difficulty">
+      <option value="easy">Easy</option>
+      <option value="medium" selected>Medium</option>
+      <option value="hard">Hard</option>
+      <option value="insane">Insane</option>
+      <option value="absurd">Absurd</option>
+    </select>
+  </label>
+
+  <label class="field">
+    Paper
+    <select id="orientation">
+      <option value="portrait" selected>A4 portrait</option>
+      <option value="landscape">A4 landscape</option>
+    </select>
+  </label>
+
+  <label class="field">
+    Seed
+    <input type="text" id="seed" spellcheck="false" autocomplete="off">
+  </label>
+
+  <label class="field">
+    <input type="checkbox" id="withSolution"> Solution page
+  </label>
+
+  <div class="spacer"></div>
+
+  <button class="primary" id="refresh" title="New maze (R)">↻ New maze</button>
+  <button id="print" title="Print (Ctrl+P)">🖨 Print</button>
+</div>
+
+<div class="stage">
+  <section class="sheet" id="mazeSheet">
+    <header class="sheet-head">
+      <div class="sheet-title">Maze</div>
+      <div class="sheet-meta" id="mazeMeta"></div>
+    </header>
+    <div class="maze-area" id="mazeArea"></div>
+  </section>
+
+  <section class="sheet" id="solutionSheet" hidden>
+    <header class="sheet-head">
+      <div class="sheet-title">Solution</div>
+      <div class="sheet-meta" id="solutionMeta"></div>
+    </header>
+    <div class="maze-area" id="solutionArea"></div>
+  </section>
+
+  <p class="hint"><kbd>R</kbd> new maze · <kbd>Ctrl</kbd>+<kbd>P</kbd> print · the seed in the URL reproduces the exact same maze</p>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---------------------------------------------------------------- config
+  const PRESETS = {
+    easy:   { rows: 25,  braid: 0.00, stroke: 0.17 },
+    medium: { rows: 40,  braid: 0.00, stroke: 0.16 },
+    hard:   { rows: 60,  braid: 0.08, stroke: 0.15 },
+    insane: { rows: 85,  braid: 0.14, stroke: 0.14 },
+    absurd: { rows: 111, braid: 0.18, stroke: 0.13 }
+  };
+
+  // Printable area of the sheet in mm, used only to keep cells square.
+  const PAPER = {
+    portrait:  { w: 210, h: 297 },
+    landscape: { w: 297, h: 210 }
+  };
+  const PAD = 12;        // sheet padding, mm (matches --pad)
+  const HEAD = 11;       // header + rule + gap, mm
+
+  // Wall bits.
+  const N = 1, E = 2, S = 4, W = 8;
+  const OPPOSITE = { [N]: S, [E]: W, [S]: N, [W]: E };
+  const DX = { [N]: 0, [E]: 1, [S]: 0, [W]: -1 };
+  const DY = { [N]: -1, [E]: 0, [S]: 1, [W]: 0 };
+
+  // ------------------------------------------------------------------ rng
+  function hashSeed(str) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  function mulberry32(a) {
+    return function () {
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function randomSeed() {
+    return Math.random().toString(36).slice(2, 8).toUpperCase();
+  }
+
+  // ------------------------------------------------------------ generation
+  // Iterative recursive-backtracker: produces long, winding corridors.
+  function carve(cols, rows, rand) {
+    const cells = new Uint8Array(cols * rows).fill(N | E | S | W);
+    const visited = new Uint8Array(cols * rows);
+    const stack = [0];
+    visited[0] = 1;
+
+    while (stack.length) {
+      const cur = stack[stack.length - 1];
+      const cx = cur % cols, cy = (cur / cols) | 0;
+
+      const open = [];
+      for (const dir of [N, E, S, W]) {
+        const nx = cx + DX[dir], ny = cy + DY[dir];
+        if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+        if (visited[ny * cols + nx]) continue;
+        open.push(dir);
+      }
+
+      if (!open.length) { stack.pop(); continue; }
+
+      const dir = open[(rand() * open.length) | 0];
+      const nx = cx + DX[dir], ny = cy + DY[dir];
+      const next = ny * cols + nx;
+      cells[cur] &= ~dir;
+      cells[next] &= ~OPPOSITE[dir];
+      visited[next] = 1;
+      stack.push(next);
+    }
+    return cells;
+  }
+
+  // Braiding: knock out some dead ends so the maze grows loops and false
+  // trails — a perfect maze is much easier to solve by hugging one wall.
+  function braid(cells, cols, rows, rate, rand) {
+    if (rate <= 0) return;
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const i = y * cols + x;
+        let walls = 0;
+        for (const dir of [N, E, S, W]) if (cells[i] & dir) walls++;
+        if (walls !== 3 || rand() > rate) continue;
+
+        const candidates = [];
+        for (const dir of [N, E, S, W]) {
+          if (!(cells[i] & dir)) continue;
+          const nx = x + DX[dir], ny = y + DY[dir];
+          if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+          candidates.push([dir, ny * cols + nx]);
+        }
+        if (!candidates.length) continue;
+        const [dir, j] = candidates[(rand() * candidates.length) | 0];
+        cells[i] &= ~dir;
+        cells[j] &= ~OPPOSITE[dir];
+      }
+    }
+  }
+
+  // Shortest path start -> end, breadth-first (handles braided loops).
+  function solve(cells, cols, rows) {
+    const total = cols * rows;
+    const prev = new Int32Array(total).fill(-1);
+    const seen = new Uint8Array(total);
+    const queue = new Int32Array(total);
+    let head = 0, tail = 0;
+    const end = total - 1;
+
+    queue[tail++] = 0;
+    seen[0] = 1;
+
+    while (head < tail) {
+      const cur = queue[head++];
+      if (cur === end) break;
+      const cx = cur % cols, cy = (cur / cols) | 0;
+      for (const dir of [N, E, S, W]) {
+        if (cells[cur] & dir) continue;
+        const nx = cx + DX[dir], ny = cy + DY[dir];
+        if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+        const nb = ny * cols + nx;
+        if (seen[nb]) continue;
+        seen[nb] = 1;
+        prev[nb] = cur;
+        queue[tail++] = nb;
+      }
+    }
+
+    const path = [];
+    for (let c = end; c !== -1; c = prev[c]) path.push(c);
+    return path.reverse();
+  }
+
+  function build(preset, cols, rows, seed) {
+    const rand = mulberry32(hashSeed(seed));
+    const cells = carve(cols, rows, rand);
+    braid(cells, cols, rows, preset.braid, rand);
+
+    // Entrance top-left, exit bottom-right, punched through the border.
+    cells[0] &= ~N;
+    cells[cols * rows - 1] &= ~S;
+
+    return { cells, cols, rows, path: solve(cells, cols, rows) };
+  }
+
+  // --------------------------------------------------------------- drawing
+  const CELL = 10; // SVG units per cell; the viewBox does the real scaling.
+
+  function render(maze, strokeRatio, showSolution) {
+    const { cells, cols, rows, path } = maze;
+    const sw = CELL * strokeRatio;
+    const half = sw / 2;
+    const w = cols * CELL, h = rows * CELL;
+
+    const seg = [];
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const i = y * cols + x;
+        const px = x * CELL, py = y * CELL;
+        if (cells[i] & N) seg.push(`M${px} ${py}h${CELL}`);
+        if (cells[i] & W) seg.push(`M${px} ${py}v${CELL}`);
+        if (x === cols - 1 && cells[i] & E) seg.push(`M${px + CELL} ${py}v${CELL}`);
+        if (y === rows - 1 && cells[i] & S) seg.push(`M${px} ${py + CELL}h${CELL}`);
+      }
+    }
+
+    let solution = "";
+    if (showSolution && path.length) {
+      const pts = path.map(c => {
+        const x = (c % cols) * CELL + CELL / 2;
+        const y = (((c / cols) | 0)) * CELL + CELL / 2;
+        return `${x} ${y}`;
+      });
+      // Extend the line out through the entrance and the exit.
+      pts.unshift(`${CELL / 2} ${-half}`);
+      pts.push(`${w - CELL / 2} ${h + half}`);
+      solution = `<path d="M${pts.join("L")}" fill="none" stroke="#d81e2c" ` +
+                 `stroke-width="${(sw * 1.5).toFixed(2)}" stroke-linecap="round" ` +
+                 `stroke-linejoin="round" opacity="0.85"/>`;
+    }
+
+    const arrow = CELL * 0.9;
+    const markers =
+      `<path d="M${CELL / 2} ${-arrow * 1.5}v${arrow}" stroke="#000" stroke-width="${sw}" stroke-linecap="round"/>` +
+      `<path d="M${CELL / 2 - arrow * 0.4} ${-arrow * 0.75}L${CELL / 2} ${-half}L${CELL / 2 + arrow * 0.4} ${-arrow * 0.75}" fill="none" stroke="#000" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/>` +
+      `<path d="M${w - CELL / 2} ${h + half}v${arrow}" stroke="#000" stroke-width="${sw}" stroke-linecap="round"/>` +
+      `<path d="M${w - CELL / 2 - arrow * 0.4} ${h + arrow * 0.75}L${w - CELL / 2} ${h + arrow * 1.5}L${w - CELL / 2 + arrow * 0.4} ${h + arrow * 0.75}" fill="none" stroke="#000" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/>`;
+
+    const pad = arrow * 1.6;
+    const vb = `${-half} ${-pad} ${w + sw} ${h + pad * 2}`;
+
+    return `<svg viewBox="${vb}" preserveAspectRatio="xMidYMid meet" ` +
+           `xmlns="http://www.w3.org/2000/svg" shape-rendering="geometricPrecision">` +
+           `<path d="${seg.join("")}" fill="none" stroke="#000" stroke-width="${sw.toFixed(2)}" ` +
+           `stroke-linecap="square"/>${markers}${solution}</svg>`;
+  }
+
+  // ------------------------------------------------------------------- app
+  const el = {
+    difficulty: document.getElementById("difficulty"),
+    orientation: document.getElementById("orientation"),
+    seed: document.getElementById("seed"),
+    withSolution: document.getElementById("withSolution"),
+    refresh: document.getElementById("refresh"),
+    print: document.getElementById("print"),
+    mazeArea: document.getElementById("mazeArea"),
+    mazeMeta: document.getElementById("mazeMeta"),
+    solutionSheet: document.getElementById("solutionSheet"),
+    solutionArea: document.getElementById("solutionArea"),
+    solutionMeta: document.getElementById("solutionMeta")
+  };
+
+  const pageStyle = document.createElement("style");
+  document.head.appendChild(pageStyle);
+
+  function gridFor(difficulty, orientation) {
+    const preset = PRESETS[difficulty];
+    const paper = PAPER[orientation];
+    const usableW = paper.w - PAD * 2;
+    const usableH = paper.h - PAD * 2 - HEAD;
+
+    // The preset fixes the cell size in mm (via its portrait row count), so
+    // cells stay square and equally hard to trace in either orientation.
+    const cellMm = (PAPER.portrait.h - PAD * 2 - HEAD) / preset.rows;
+    const rows = Math.max(6, Math.round(usableH / cellMm));
+    const cols = Math.max(6, Math.round(usableW / cellMm));
+    return { preset, cols, rows };
+  }
+
+  // Keep the dropdown honest about the grid you actually get on this paper.
+  function labelOptions(orientation) {
+    for (const opt of el.difficulty.options) {
+      const { cols, rows } = gridFor(opt.value, orientation);
+      const name = opt.value[0].toUpperCase() + opt.value.slice(1);
+      opt.textContent = `${name} — ${cols} × ${rows}`;
+    }
+  }
+
+  function readState() {
+    return {
+      difficulty: el.difficulty.value,
+      orientation: el.orientation.value,
+      seed: el.seed.value.trim().toUpperCase() || randomSeed(),
+      solution: el.withSolution.checked
+    };
+  }
+
+  function writeHash(state) {
+    const params = new URLSearchParams({
+      d: state.difficulty,
+      o: state.orientation,
+      s: state.seed
+    });
+    if (state.solution) params.set("sol", "1");
+    history.replaceState(null, "", "#" + params.toString());
+  }
+
+  function readHash() {
+    const params = new URLSearchParams(location.hash.slice(1));
+    if (params.get("d") in PRESETS) el.difficulty.value = params.get("d");
+    if (params.get("o") in PAPER) el.orientation.value = params.get("o");
+    if (params.get("s")) el.seed.value = params.get("s").toUpperCase();
+    el.withSolution.checked = params.get("sol") === "1";
+  }
+
+  function draw() {
+    const state = readState();
+    el.seed.value = state.seed;
+
+    const paper = PAPER[state.orientation];
+    document.documentElement.style.setProperty("--paper-w", paper.w + "mm");
+    document.documentElement.style.setProperty("--paper-h", paper.h + "mm");
+    pageStyle.textContent = `@page { size: A4 ${state.orientation}; margin: 0; }`;
+
+    labelOptions(state.orientation);
+
+    const { preset, cols, rows } = gridFor(state.difficulty, state.orientation);
+    const maze = build(preset, cols, rows, state.seed);
+
+    const label = state.difficulty.toUpperCase();
+    const meta = `${label} · ${cols}×${rows} · SEED ${state.seed}`;
+    el.mazeMeta.textContent = meta;
+    el.solutionMeta.textContent = meta;
+
+    el.mazeArea.innerHTML = render(maze, preset.stroke, false);
+    el.solutionSheet.hidden = !state.solution;
+    el.solutionArea.innerHTML = state.solution ? render(maze, preset.stroke, true) : "";
+
+    writeHash(state);
+  }
+
+  function newMaze() {
+    el.seed.value = randomSeed();
+    draw();
+  }
+
+  el.refresh.addEventListener("click", newMaze);
+  el.print.addEventListener("click", () => window.print());
+  el.difficulty.addEventListener("change", draw);
+  el.orientation.addEventListener("change", draw);
+  el.withSolution.addEventListener("change", draw);
+  el.seed.addEventListener("change", draw);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+    if (e.key === "r" || e.key === "R") { e.preventDefault(); newMaze(); }
+  });
+
+  window.addEventListener("hashchange", () => { readHash(); draw(); });
+
+  readHash();
+  draw();
+})();
+</script>
+</body>
+</html>
